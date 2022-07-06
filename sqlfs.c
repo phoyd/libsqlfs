@@ -155,6 +155,57 @@ static __inline__ void remove_tail_slash(char *str)
     }
 }
 
+/* Unlike strncpy, strlcpy guarantees a zero terminated string, if src
+ * won't fit in dst. */
+size_t bsd_strlcpy(char *dst, const char *src, size_t siz)
+{
+	char *d = dst;
+	const char *s = src;
+	size_t n = siz;
+	/* Copy as many bytes as will fit */
+	if (n != 0) {
+		while (--n != 0) {
+			if ((*d++ = *s++) == '\0')
+				break;
+		}
+  }
+	/* Not enough room in dst, add NUL and traverse rest of src */
+	if (n == 0) {
+		if (siz != 0)
+			*d = '\0';		/* NUL-terminate dst */
+		while (*s++)
+			;
+	}
+	return(s - src - 1);	/* count does not include NUL */
+}
+
+/* strlcat guarantees a zero terminated string */
+size_t bsd_strlcat(char *dst, const char *src, size_t siz)
+{
+	char *d = dst;
+	const char *s = src;
+	size_t n = siz;
+	size_t dlen;
+
+	/* Find the end of dst and adjust bytes left but don't go past end */
+	while (n-- != 0 && *d != '\0')
+		d++;
+	dlen = d - dst;
+	n = siz - dlen;
+
+	if (n == 0)
+		return(dlen + strlen(s));
+	while (*s != '\0') {
+		if (n != 1) {
+			*d++ = *s;
+			n--;
+		}
+		s++;
+	}
+	*d = '\0';
+
+	return(dlen + (s - src));	/* count does not include NUL */
+}
 static __inline__ char *make_str_copy(const char *str)
 {
     if (str == 0)
@@ -1970,7 +2021,7 @@ int sqlfs_proc_readlink(sqlfs_t *sqlfs, const char *path, char *buf, size_t size
                 if (attr.size > size)
                     show_msg(stderr,
                              "warning: readlink provided buffer too small\n");
-                strncpy(buf, value.data, size);
+                bsd_strlcpy(buf, value.data, size);
             }
         }
         else
@@ -2297,10 +2348,10 @@ static int rename_dir_children(sqlfs_t *sqlfs, const char *old, const char *new)
                     continue;
 
                 char new_path[PATH_MAX];
-                strncpy(new_path, rpath, PATH_MAX);
+                bsd_strlcpy(new_path, rpath, PATH_MAX);
                 new_path[PATH_MAX-2] = 0; // make sure there is a terminating null and room for "/"
-                strncat(new_path, "/", 1);
-                strncat(new_path, child_filename, PATH_MAX - strlen(new_path) - 1);
+                bsd_strlcat(new_path, "/", 1);
+                bsd_strlcat(new_path, child_filename, PATH_MAX - strlen(new_path) - 1);
 
                 i = key_exists(get_sqlfs(sqlfs), new_path, 0);
                 if (i == 1)
@@ -3641,7 +3692,7 @@ int sqlfs_init(const char *db_file_name)
 #endif
 
     if (db_file_name)
-        strncpy(default_db_file, db_file_name, sizeof(default_db_file));
+        bsd_strlcpy(default_db_file, db_file_name,sizeof(default_db_file));
     pthread_key_create(&pthread_key, sqlfs_t_finalize);
     return 0;
 }
